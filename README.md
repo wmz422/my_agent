@@ -1,0 +1,12 @@
+- 目标：python构建一个agent
+  - 不借助现成agent，可以在网页提问deepseek，以及给一个deepseek api
+- 目前功能
+  - 目前支持联网搜索工具
+  - 一个进程内连续对话
+  - 猫娘语气
+- 使用方法
+  - clone仓库然后在.venv构建需要的python环境
+    - openai
+    - ddgs
+  - 配置"DEEPSEEK_API_KEY"环境变量
+  - 激活python环境后 python src/tool.py运行
