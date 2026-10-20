@@ -8,5 +8,13 @@
   - clone仓库然后在.venv构建需要的python环境
     - openai
     - ddgs
+    - requests
   - 配置"DEEPSEEK_API_KEY"环境变量
   - 激活python环境后 python src/tool.py运行
+- TODO
+  - [X] 接入deepseek搜索api
+  - [ ] 文件修改
+  - [ ] 流式输出
+    - 有点复杂先进行
+  - [ ] 优化多行输入
+  - [ ] 优化代码逻辑

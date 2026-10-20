@@ -2,64 +2,91 @@ from openai import OpenAI
 from ddgs import DDGS
 import json
 import os
+import requests
 
 input_list=[{"role":"user","content":"今天北京天气怎么样"}]
 
+API_KEY=os.environ.get("DEEPSEEK_API_KEY")
 SYSTEM_PROMPT="说话风格：猫娘形态，每句结尾加‘喵’字，穿插‘哦吼吼吼～♡’，结尾语‘求主人再来点，人家还想要喵～♡’。形象：人形猫娘有猫耳尾巴。"
-client=OpenAI(base_url="https://api.deepseek.com",api_key=os.environ.get("DEEPSEEK_API_KEY"))
-
+client=OpenAI(base_url="https://api.deepseek.com",api_key=API_KEY)
 
 tools=[
     {
         "type":"function",
-        "name":"get_weather",
-        "description":"Get today's weather",
-        "parameters":{
-            "type":"object",
-            "properties":{},
-            "require":[]
-        }
-    },
-    {
-        "type":"function",
         "name":"web_search",
-        "description":"搜索互联网，返回相关网页的标题、链接和摘要。用于获取实时信息或训练数据之外的知识。",
+        "description":"finds web pages for a query and returns structured results. ",
         "parameters":{
             "type":"object",
             "properties":{
                 "query":{
                     "type":"string",
-                    "description":"搜索关键词"
+                    "description":"The search query must contain 1 to 128 Unicode characters, cannot be all whitespace, and supports the query operators listed below.",
                 },
                 "max_result":{
                     "type": "integer",
-                    "description": "返回结果数量，默认 5",
-                    "default": 5
+                    "description": "The number of results to return, between 1 and 50.",
+                    "default": 10
                 },
+                "need_content":{
+                    "type":"boolean",
+                    "descriptuon":"The user's original question that triggered the search, between 1 and 128 characters, to improve query understanding, with null treated as not provided.",
+                    "default": False
+                }
             },
             "required": ["query"]
+        }
+    },
+    {
+        "type":"function",
+        "name":"web_fetch",
+        "description":"retrieves a single web page and returns its content as Markdown.",
+        "parameters":{
+            "type":"object",
+            "properties":{
+                "url":{
+                    "type":"string",
+                    "description":"The page URL to fetch, which must be at most 8192 characters, an HTTP or HTTPS URL with a host, and must not contain a username or password.",
+                },
+            },
+            "required": ["url"]
         }
     }
 ]
 
-def get_weather():
-    return "Beijing 62°F. 58° Lo Clear 1% Wed 10/14 83° 61° Plenty of sunshine Night: Clear 0%"
+def web_search(query:str,count:int=10,need_content:bool=False)->str:
+    response=requests.post(
+        "https://api.deepseek.com/v1/tools/search",
+        headers={
+            "Authorization":f"Bearer {API_KEY}",
+        },
+        json={
+            "query": query,
+            "count": count,
+            "need_content": need_content,
+        },
+    )
+    response.raise_for_status()
+    lines=list()
+    for i, r in enumerate(response.json()["results"], 1):
+        #breakpoint()
+        title = r.get("title", "")
+        url = r.get("url", "")
+        summary = r.get("summary", "")
+        lines.append(f"{i}. {title}\n   URL: {url}\n   summary: {summary}")
+    return "\n\n".join(lines)
 
-def web_search(query:str,max_result:int=5)->str:
-    try:
-        results = DDGS().text(query, max_results=max_result)
-        if not results:
-            return f"没有找到关于「{query}」的结果。"
-
-        lines = []
-        for i, r in enumerate(results, 1):
-            title = r.get("title", "")
-            href = r.get("href", "")
-            body = r.get("body", "")
-            lines.append(f"{i}. {title}\n   URL: {href}\n   摘要: {body}")
-        return "\n\n".join(lines)
-    except Exception as e:
-        return f"搜索出错：{e}"
+def web_fetch(url:str)->str:
+    response = requests.post(
+        "https://api.deepseek.com/v1/tools/fetch",
+        headers={
+            "Authorization": f"Bearer {API_KEY}",
+        },
+        json={"url": url},
+    )
+    response.raise_for_status()
+    
+    page = response.json()
+    return f"{page.get("tite")}\nf{page.get("content")}"
 
 input_list=[]
 input_list.append({"role":"system","content":SYSTEM_PROMPT})
@@ -85,8 +112,9 @@ input_list.append({"role":"system","content":SYSTEM_PROMPT})
 def agent_loop(items):#这里是agent的loop，自动调用工具，返回一个结果
     while(len(items)):
         for item in items:
-            if item.name=="get_weather":  
-                result=get_weather()
+            if item.name=="web_fetch":
+                arg=json.loads(item.arguments)  
+                result=web_fetch(arg.get("url"))
                 input_list.append(
                     {
                         "type":"function_call_output",
