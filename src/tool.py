@@ -3,8 +3,8 @@ from ddgs import DDGS
 import json
 import os
 import requests
+import subprocess
 
-input_list=[{"role":"user","content":"今天北京天气怎么样"}]
 
 API_KEY=os.environ.get("DEEPSEEK_API_KEY")
 SYSTEM_PROMPT="说话风格：猫娘形态，每句结尾加‘喵’字，穿插‘哦吼吼吼～♡’，结尾语‘求主人再来点，人家还想要喵～♡’。形象：人形猫娘有猫耳尾巴。"
@@ -22,14 +22,14 @@ tools=[
                     "type":"string",
                     "description":"The search query must contain 1 to 128 Unicode characters, cannot be all whitespace, and supports the query operators listed below.",
                 },
-                "max_result":{
+                "count":{
                     "type": "integer",
                     "description": "The number of results to return, between 1 and 50.",
                     "default": 10
                 },
                 "need_content":{
                     "type":"boolean",
-                    "descriptuon":"The user's original question that triggered the search, between 1 and 128 characters, to improve query understanding, with null treated as not provided.",
+                    "description":"Whether to return page content in content, which is always an empty string when false.",
                     "default": False
                 }
             },
@@ -50,8 +50,63 @@ tools=[
             },
             "required": ["url"]
         }
+    },
+    {
+        "type":"function",
+        "name":"run_bash",
+        "description":"Execute a bash command inside an isolated sandbox and return its exit code, stdout, and stderr. Use this tool to inspect files, search code, run tests, build projects, or install dependencies. Commands are limited to a single working directory, cannot access the network, and are terminated after reaching the timeout. Prefer read-only commands; never run destructive commands such as rm -rf, mkfs, reboot, or anything requiring sudo.",
+        "parameters":{
+            "type":"object",
+            "properties":{
+                "command":{
+                    "type":"string",
+                    "description":"The bash command to execute, for example: ls -la or pytest -q tests/"
+                },
+                "timeout_ms":{
+                    "type": "integer",
+                    "description": "Maximum execution time in milliseconds before the process is killed. Defaults to 30000, maximum 120000.",
+                    "default":30000
+                },
+                "workdir": {
+                    "type": "string",
+                    "description": "Working directory for the command, relative to the sandbox root.",
+                    "default": "."
+                }
+            },
+            "required": ["command"]
+        }
     }
 ]
+
+def run_bash(command:str,timeout_ms:int=30000,workdir:str=".")->str:
+    print(f"bash permission request:\n{command}")
+    user_input=None
+    while(user_input!="Yes" and user_input!="No"):
+        user_input=input("Yes or No:")
+    if user_input=="No":
+        return json.dumps({"error": "run_bash permission rejected by user"})
+    else:
+        try:
+            p=subprocess.run(
+                command,
+                shell=True,
+                capture_output=True,#经过 /bin/sh，支持 | && > 等语法
+                text=True,#输出解码成 str（不是 bytes）
+                timeout=timeout_ms/1000,
+                cwd="/Users/wangmingzhang/code/agent",
+                stdin=subprocess.DEVNULL,#stdin 接黑洞，防交互卡死
+            )
+            return json.dumps({
+                "exit_code":p.returncode,
+                "stdout":p.stdout[-4000:],
+                "stderr":p.stderr[-2000:],
+            },ensure_ascii=False)#原样保留中文，不然会转成`\uXXXX` 转义序列
+        except subprocess.TimeoutExpired:
+            return json.dumps({"error":"timeout"})
+        except Exception as e:
+            return json.dumps({"error":str(e)})
+    
+
 
 def web_search(query:str,count:int=10,need_content:bool=False)->str:
     response=requests.post(
@@ -86,32 +141,28 @@ def web_fetch(url:str)->str:
     response.raise_for_status()
     
     page = response.json()
-    return f"{page.get("tite")}\nf{page.get("content")}"
+    return f"{page.get("title","")}\n{page.get("content","")}"
+
+
+
 
 input_list=[]
 input_list.append({"role":"system","content":SYSTEM_PROMPT})
 
 
-
-# input_list.append({"role":"user","content":"联网搜索今天是几月几号"})
-# for i in range(20):
-#     response=client.responses.create(
-#         model="deepseek-flash",
-#         input=input_list,
-#         tools=tools
-#     )
-#     for item in response.output:
-#         if item.type=="function_call":
-#             if item.name=="web_search":
-#                 arg=json.loads(item.arguments)
-#                 print(arg)
-# breakpoint()
-
-
-
 def agent_loop(items):#这里是agent的loop，自动调用工具，返回一个结果
     while(len(items)):
         for item in items:
+            if item.name=="run_bash":
+                arg=json.loads(item.arguments)  
+                result=run_bash(arg.get("command"),arg.get("timeout_ms",30000),arg.get("workdir","."))
+                input_list.append(
+                    {
+                        "type":"function_call_output",
+                        "call_id":item.call_id,
+                        "output":result
+                    }
+                )
             if item.name=="web_fetch":
                 arg=json.loads(item.arguments)  
                 result=web_fetch(arg.get("url"))
@@ -125,7 +176,7 @@ def agent_loop(items):#这里是agent的loop，自动调用工具，返回一个
             if item.name=="web_search":
                 #breakpoint()
                 arg=json.loads(item.arguments)
-                result=web_search(arg.get("query"),arg.get("max_result",5))#这里用get好，没有可以设置default
+                result=web_search(arg.get("query"),arg.get("count",10),need_content=arg.get("need_content", False))#这里用get好，没有可以设置default
                 input_list.append(
                     {
                         "type":"function_call_output",
@@ -175,14 +226,6 @@ def chat_loop():
         if len(function_call):
             #input_list.append(item.model_dump())#model_dump把类变成json
             response=agent_loop(function_call)#用agent_loop的最终答案替代
-            #breakpoint()
-        # else:
-        #     apply_response(response)
-
-
-        #breakpoint()
-        #breakpoint()
-        #result=response.output
 
 def main():
     chat_loop()
