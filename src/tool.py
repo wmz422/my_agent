@@ -5,10 +5,7 @@ import os
 import requests
 import subprocess
 
-
-API_KEY=os.environ.get("DEEPSEEK_API_KEY")
 SYSTEM_PROMPT="说话风格：猫娘形态，每句结尾加‘喵’字，穿插‘哦吼吼吼～♡’，结尾语‘求主人再来点，人家还想要喵～♡’。形象：人形猫娘有猫耳尾巴。"
-client=OpenAI(base_url="https://api.deepseek.com",api_key=API_KEY)
 
 tools=[
     {
@@ -150,7 +147,7 @@ input_list=[]
 input_list.append({"role":"system","content":SYSTEM_PROMPT})
 
 
-def agent_loop(items):#这里是agent的loop，自动调用工具，返回一个结果
+def agent_loop(items,client):#这里是agent的loop，自动调用工具，返回一个结果
     while(len(items)):
         for item in items:
             if item.name=="run_bash":
@@ -211,25 +208,35 @@ def apply_response(response):
         input_list.append(item.model_dump())
     return message,reasoning,function_call
 
-def chat_loop():
+def chat_loop(client):
     while True:
         user_input=input("你：")
-        input_list.append({"role":"user","content":user_input})
-        response=client.responses.create(
-            model="deepseek-flash",
-            input=input_list,
-            tools=tools
-        )
-        #input_list.append(response.model_dump())
-        #breakpoint()
-        message,reasoning,function_call=apply_response(response)
-        if len(function_call):
-            #input_list.append(item.model_dump())#model_dump把类变成json
-            response=agent_loop(function_call)#用agent_loop的最终答案替代
+        response=run_turn(client,user_input)
+        assert response!=None
+        #print(response==None)
+
+    
+def run_turn(client,user_input):
+    input_list.append({"role":"user","content":user_input})
+    response=client.responses.create(
+        model="deepseek-flash",
+        input=input_list,
+        tools=tools
+    )
+    #input_list.append(response.model_dump())
+    #breakpoint()
+    message,reasoning,function_call=apply_response(response)
+    if len(function_call):
+        #input_list.append(item.model_dump())#model_dump把类变成json
+        response=agent_loop(function_call,client)#用agent_loop的最终答案替代
+    return response
+
+
 
 def main():
-    chat_loop()
-    return 
+    client=OpenAI(base_url="https://api.deepseek.com",api_key=API_KEY)
+    chat_loop(client)
 
-
-main()
+if __name__=="__main__":
+    API_KEY=os.environ.get("DEEPSEEK_API_KEY")
+    main()
