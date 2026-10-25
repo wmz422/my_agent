@@ -5,8 +5,6 @@ import os
 import requests
 import subprocess
 
-SYSTEM_PROMPT="说话风格：猫娘形态，每句结尾加‘喵’字，穿插‘哦吼吼吼～♡’，结尾语‘求主人再来点，人家还想要喵～♡’。形象：人形猫娘有猫耳尾巴。"
-
 tools=[
     {
         "type":"function",
@@ -143,17 +141,13 @@ def web_fetch(url:str)->str:
 
 
 
-input_list=[]
-input_list.append({"role":"system","content":SYSTEM_PROMPT})
-
-
-def agent_loop(items,client):#这里是agent的loop，自动调用工具，返回一个结果
+def agent_loop(items,client,session):#这里是agent的loop，自动调用工具，返回一个结果
     while(len(items)):
         for item in items:
             if item.name=="run_bash":
                 arg=json.loads(item.arguments)  
                 result=run_bash(arg.get("command"),arg.get("timeout_ms",30000),arg.get("workdir","."))
-                input_list.append(
+                session.history.append(
                     {
                         "type":"function_call_output",
                         "call_id":item.call_id,
@@ -163,7 +157,7 @@ def agent_loop(items,client):#这里是agent的loop，自动调用工具，返�
             if item.name=="web_fetch":
                 arg=json.loads(item.arguments)  
                 result=web_fetch(arg.get("url"))
-                input_list.append(
+                session.history.append(
                     {
                         "type":"function_call_output",
                         "call_id":item.call_id,
@@ -174,7 +168,7 @@ def agent_loop(items,client):#这里是agent的loop，自动调用工具，返�
                 #breakpoint()
                 arg=json.loads(item.arguments)
                 result=web_search(arg.get("query"),arg.get("count",10),need_content=arg.get("need_content", False))#这里用get好，没有可以设置default
-                input_list.append(
+                session.history.append(
                     {
                         "type":"function_call_output",
                         "call_id":item.call_id,
@@ -184,15 +178,15 @@ def agent_loop(items,client):#这里是agent的loop，自动调用工具，返�
             #breakpoint()
         response=client.responses.create(
             model="deepseek-flash",
-            input=input_list,
+            input=session.history,
             tools=tools
         )
-        message,reasoning,function_call=apply_response(response)
+        message,reasoning,function_call=apply_response(response,session)
         items=function_call
     return response
         
 
-def apply_response(response):
+def apply_response(response,session):
     #breakpoint()
     reasoning=None
     function_call=list()
@@ -205,30 +199,28 @@ def apply_response(response):
             reasoning=item
         elif item.type=="function_call":
             function_call.append(item)
-        input_list.append(item.model_dump())
+        session.history.append(item.model_dump())
     return message,reasoning,function_call
 
-def chat_loop(client):
+def chat_loop(client,session):
     while True:
         user_input=input("你：")
-        response=run_turn(client,user_input)
+        response=run_turn(client,session,user_input)
         assert response!=None
         #print(response==None)
 
     
-def run_turn(client,user_input):
-    input_list.append({"role":"user","content":user_input})
+def run_turn(client,session,user_input):
+    #breakpoint()
+    session.history.append({"role":"user","content":user_input})
     response=client.responses.create(
         model="deepseek-flash",
-        input=input_list,
+        input=session.history,
         tools=tools
     )
-    #input_list.append(response.model_dump())
-    #breakpoint()
-    message,reasoning,function_call=apply_response(response)
+    message,reasoning,function_call=apply_response(response,session)
     if len(function_call):
-        #input_list.append(item.model_dump())#model_dump把类变成json
-        response=agent_loop(function_call,client)#用agent_loop的最终答案替代
+        response=agent_loop(function_call,client,session)#用agent_loop的最终答案替代
     return response
 
 
