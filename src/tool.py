@@ -147,7 +147,7 @@ def agent_loop(items,client,session):#这里是agent的loop，自动调用工具
             if item.name=="run_bash":
                 arg=json.loads(item.arguments)  
                 result=run_bash(arg.get("command"),arg.get("timeout_ms",30000),arg.get("workdir","."))
-                session.history.append(
+                session.add_record(
                     {
                         "type":"function_call_output",
                         "call_id":item.call_id,
@@ -157,7 +157,7 @@ def agent_loop(items,client,session):#这里是agent的loop，自动调用工具
             if item.name=="web_fetch":
                 arg=json.loads(item.arguments)  
                 result=web_fetch(arg.get("url"))
-                session.history.append(
+                session.add_record(
                     {
                         "type":"function_call_output",
                         "call_id":item.call_id,
@@ -168,7 +168,7 @@ def agent_loop(items,client,session):#这里是agent的loop，自动调用工具
                 #breakpoint()
                 arg=json.loads(item.arguments)
                 result=web_search(arg.get("query"),arg.get("count",10),need_content=arg.get("need_content", False))#这里用get好，没有可以设置default
-                session.history.append(
+                session.add_record(
                     {
                         "type":"function_call_output",
                         "call_id":item.call_id,
@@ -199,7 +199,7 @@ def apply_response(response,session):
             reasoning=item
         elif item.type=="function_call":
             function_call.append(item)
-        session.history.append(item.model_dump())
+        session.add_record(item.model_dump())
     return message,reasoning,function_call
 
 def chat_loop(client,session):
@@ -211,8 +211,7 @@ def chat_loop(client,session):
 
     
 def run_turn(client,session,user_input):
-    #breakpoint()
-    session.history.append({"role":"user","content":user_input})
+    session.add_record({"role":"user","content":user_input})
     response=client.responses.create(
         model="deepseek-flash",
         input=session.history,
