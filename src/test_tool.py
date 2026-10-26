@@ -3,6 +3,8 @@ import tool
 import core
 import main
 from copy import deepcopy
+import os
+from core import Session
 
 class ResponseItem:
     def __init__(self,type,gt_output_text):
@@ -33,7 +35,8 @@ class FakeClient:
 
 
 def test_run_turn_no_tool():#测试run_turn没有工具的一次调用
-    session=core.Session(main.SYSTEM_PROMPT)
+    SYSTEM_PROMPT="you are a helpful assistant"
+    session=core.Session(system_prompt=SYSTEM_PROMPT,title="test")
     or_session_history=deepcopy(session.history)
     try:
 
@@ -66,8 +69,32 @@ def test_run_turn_no_tool():#测试run_turn没有工具的一次调用
         print("end of test")
         #tool.input_list=tmp_input_list#try里面可能会直接报错，可以用except截获错误，不管有没有被截获都会继续执行finnaly然后再继续传播
 
+def test_session():
+    #新建、保存、重新加载。
+    try:
+        test_memory_path='/Users/wangmingzhang/code/agent/src/tmp/memory/test'
+        test_record={"role":"user","content":"hello"}
+        session_1=Session(title="test_1",memory_path=test_memory_path)
+        session_1.add_record(test_record)
+        tmp_history=deepcopy(session_1.history)
+        session_2=Session(title="test_1",memory_path=test_memory_path)
+        assert session_2.history==tmp_history,"记录未添加"
+    finally:
+        os.remove(session_1.path)
 
+    try:
+        session_3=Session(title="test_3",memory_path=test_memory_path)
+        session_4=Session(title="test_4",memory_path=test_memory_path)
+        tmp_history=deepcopy(session_4.history)
+        session_3.add_record(test_record)
+        assert tmp_history==session_4.history,"会话不独立"
+    finally:
+        os.remove(session_3.path)
+        os.remove(session_4.path)
+    print("test passed")
+        
 
 
 if __name__=="__main__":
-    test_run_turn_no_tool()
+    test_session()
+    #test_run_turn_no_tool()
