@@ -9,12 +9,22 @@
     - openai
     - ddgs
     - requests
+    - prompt_toolkit
+    - rich
   - 配置"DEEPSEEK_API_KEY"环境变量
   - 激活python环境后 python src/tool.py运行
+  - 设置MEMORYPATH
+- 注意
+  - esc+enter输入消息
 - TODO
   - [X] 接入deepseek搜索api
-  - [ ] 文件修改
+  - [X] bash工具
+  - [X] .md渲染
+  - [X] 优化输入和多行输入
+  - [X] 简单文件记忆
+  - [ ] 设计模式
+    - [ ] tools
+  - [ ] bash工具安全性
   - [ ] 流式输出
     - 有点复杂先进行
-  - [ ] 优化多行输入
   - [ ] 优化代码逻辑
